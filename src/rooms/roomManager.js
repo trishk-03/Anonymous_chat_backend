@@ -61,14 +61,22 @@ export function handleCreateRoom(ws, { roomName, username } = {}) {
 
     const expiredMsg = JSON.stringify({ type: 'room_expired', payload: { roomId: expiredRoomId } });
     
-    // Broadcast expiry and close connections
+    // Broadcast expiry, clear member tracking references, and close connections
     for (const member of room.members.values()) {
-      if (member.ws && member.ws.readyState === member.ws.OPEN) {
-        member.ws.send(expiredMsg);
+      if (member.ws) {
+        if (member.ws.readyState === member.ws.OPEN) {
+          member.ws.send(expiredMsg);
+        }
+        member.ws.roomId = null;
+        member.ws.userId = null;
         member.ws.close();
       }
     }
-    // Delete room from store
+
+    // Fully clear member references to prevent memory leaks
+    room.members.clear();
+
+    // Delete room from store (clears timer and deletes Map entry)
     deleteRoom(expiredRoomId);
   };
 
