@@ -17,7 +17,7 @@ export const roomStore = new Map();
  * @returns {Object} The created room object
  * @throws {Error} If the room name is already taken
  */
-export function createRoom({ roomName }) {
+export function createRoom({ roomName, onExpire }) {
   if (isRoomNameTaken(roomName)) {
     throw new Error(`Room name "${roomName}" is already taken.`);
   }
@@ -34,7 +34,11 @@ export function createRoom({ roomName }) {
 
   // Setup auto-expiry timer
   const expiryTimer = setTimeout(() => {
-    deleteRoom(roomId);
+    if (onExpire) {
+      onExpire(roomId);
+    } else {
+      deleteRoom(roomId);
+    }
   }, ROOM_EXPIRY_MS);
 
   const room = {
