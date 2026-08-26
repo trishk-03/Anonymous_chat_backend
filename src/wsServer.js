@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { generateUserId } from './utils/idGenerator.js';
-import { handleCreateRoom, handleJoinRoom, handleChatMessage, handleDeleteRoom, handleDelegateAdmin } from './rooms/roomManager.js';
+import { handleCreateRoom, handleJoinRoom, handleChatMessage, handleDeleteRoom, handleDelegateAdmin, handleLeaveRoom } from './rooms/roomManager.js';
 
 /**
  * Sends a JSON stringified error message over the WebSocket.
@@ -71,6 +71,9 @@ export function setupWebSocketServer(httpServer) {
         case 'delegate_admin':
           handleDelegateAdmin(ws, payload);
           break;
+        case 'leave_room':
+          handleLeaveRoom(ws);
+          break;
         default:
           console.warn(`[${msgTime}] [WS] Unknown message type "${type}" from connection ${connectionId}`);
           sendError(ws, 'BAD_REQUEST', `Unknown message type "${type}".`);
@@ -80,8 +83,7 @@ export function setupWebSocketServer(httpServer) {
     ws.on('close', (code, reason) => {
       const closeTimestamp = new Date().toISOString();
       console.log(`[${closeTimestamp}] [WS] Connection closed. Connection ID: ${connectionId} (Code: ${code})`);
-      // Note: Full member disconnect cleanup logic (admin transfer, socket cleanup)
-      // will be implemented in subsequent phases.
+      handleLeaveRoom(ws);
     });
 
     ws.on('error', (error) => {

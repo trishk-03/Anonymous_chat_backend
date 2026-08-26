@@ -3,6 +3,7 @@ import {
   createRoom,
   getRoomById,
   addMember,
+  removeMember,
   deleteRoom,
   isRoomNameTaken
 } from './roomStore.js';
@@ -385,3 +386,97 @@ export function handleDelegateAdmin(ws, { newAdminUserId } = {}) {
     }
   }
 }
+
+/**
+ * Orchestrates a member leaving a room (either explicitly via "leave_room" or implicitly on connection close).
+ * 
+ * - Removes the sender from their current room's members.
+ * - If the sender was the admin:
+ *   - If other members remain: auto-promotes the member with the earliest joinedAt timestamp to admin.
+ *     Broadcasts { type: "admin_changed", payload: { newAdminUserId, newAdminUsername, reason: "previous_admin_left" } }.
+ *   - If no members remain: deletes the room entirely (clear expiry timer, remove from store).
+ * - If the sender was a regular member:
+ *   - Broadcasts { type: "user_left", payload: { userId, username } } to remaining members.
+ * - Closes the sender's WebSocket connection cleanly if still open.
+ * 
+ * @param {import('ws').WebSocket} ws
+ */
+export function handleLeaveRoom(ws) {
+  const { roomId, userId } = ws;
+
+  if (!roomId || !userId) {
+    return;
+  }
+
+  // Clear tracking references on ws immediately to prevent duplicate invocations (e.g. ws.close triggering close event)
+  ws.roomId = null;
+  ws.userId = null;
+
+  const room = getRoomById(roomId);
+  if (!room) {
+    if (ws.readyState === ws.OPEN) {
+      ws.close();
+    }
+    return;
+  }
+
+  const member = room.members.get(userId);
+  if (!member) {
+    if (ws.readyState === ws.OPEN) {
+      ws.close();
+    }
+    return;
+  }
+
+  const wasAdmin = (room.adminId === userId);
+  const username = member.username;
+
+  // Remove member from room store (also auto-promotes oldest member if admin left)
+  removeMember(roomId, userId);
+
+  if (wasAdmin) {
+    if (room.members.size > 0) {
+      const newAdmin = room.members.get(room.adminId);
+      if (newAdmin) {
+        const adminChangedMsg = JSON.stringify({
+          type: 'admin_changed',
+          payload: {
+            newAdminUserId: newAdmin.userId,
+            newAdminUsername: newAdmin.username,
+            reason: 'previous_admin_left'
+          }
+        });
+
+        for (const m of room.members.values()) {
+          if (m.ws && m.ws.readyState === m.ws.OPEN) {
+            m.ws.send(adminChangedMsg);
+          }
+        }
+      }
+    } else {
+      // Delete the room if empty
+      deleteRoom(roomId);
+    }
+  } else {
+    // Broadcast user_left to remaining members
+    const userLeftMsg = JSON.stringify({
+      type: 'user_left',
+      payload: {
+        userId,
+        username
+      }
+    });
+
+    for (const m of room.members.values()) {
+      if (m.ws && m.ws.readyState === m.ws.OPEN) {
+        m.ws.send(userLeftMsg);
+      }
+    }
+  }
+
+  // Close leaving user's socket cleanly if still open
+  if (ws.readyState === ws.OPEN) {
+    ws.close();
+  }
+}
+
