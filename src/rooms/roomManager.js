@@ -264,3 +264,124 @@ export function handleChatMessage(ws, { text } = {}) {
     }
   }
 }
+
+/**
+ * Handles deleting a room. Admin only.
+ * - Validates sender is the admin.
+ * - Broadcasts room_deleted to all members (including sender).
+ * - Deletes room from roomStore (clearing expiry timer).
+ * - Closes all connections.
+ * 
+ * @param {import('ws').WebSocket} ws
+ */
+export function handleDeleteRoom(ws) {
+  const { roomId, userId } = ws;
+
+  if (!roomId || !userId) {
+    sendJSON(ws, 'error', { code: 'UNAUTHORIZED', message: 'You are not currently in a room.' });
+    return;
+  }
+
+  const room = getRoomById(roomId);
+  if (!room) {
+    sendJSON(ws, 'error', { code: 'ROOM_NOT_FOUND', message: 'Your room was not found.' });
+    return;
+  }
+
+  // Verify that the user is the admin
+  if (room.adminId !== userId) {
+    sendJSON(ws, 'error', { code: 'NOT_ADMIN', message: 'Only the room admin can delete the room.' });
+    return;
+  }
+
+  const deleteBroadcastMsg = JSON.stringify({
+    type: 'room_deleted',
+    payload: { roomId }
+  });
+
+  // Track sockets so we can close them after deleting the room
+  const memberSockets = [];
+  for (const member of room.members.values()) {
+    if (member.ws && member.ws.readyState === member.ws.OPEN) {
+      member.ws.send(deleteBroadcastMsg);
+      memberSockets.push(member.ws);
+    }
+  }
+
+  // Delete the room (this clears the expiry timer in roomStore)
+  deleteRoom(roomId);
+
+  // Close all member connections
+  for (const socket of memberSockets) {
+    socket.close();
+  }
+}
+
+/**
+ * Handles delegating room administration to another member. Admin only.
+ * - Validates sender is the admin.
+ * - Validates new admin is a member of the room.
+ * - Updates the room admin ID and marks the new/old admin flags.
+ * - Broadcasts admin_changed to all members.
+ * 
+ * @param {import('ws').WebSocket} ws
+ * @param {Object} payload
+ * @param {string} payload.newAdminUserId
+ */
+export function handleDelegateAdmin(ws, { newAdminUserId } = {}) {
+  const { roomId, userId } = ws;
+
+  if (!roomId || !userId) {
+    sendJSON(ws, 'error', { code: 'UNAUTHORIZED', message: 'You are not currently in a room.' });
+    return;
+  }
+
+  if (!newAdminUserId || typeof newAdminUserId !== 'string' || newAdminUserId.trim() === '') {
+    sendJSON(ws, 'error', { code: 'BAD_REQUEST', message: 'New admin user ID cannot be empty.' });
+    return;
+  }
+
+  const room = getRoomById(roomId);
+  if (!room) {
+    sendJSON(ws, 'error', { code: 'ROOM_NOT_FOUND', message: 'Your room was not found.' });
+    return;
+  }
+
+  // Verify that the user is the current admin
+  if (room.adminId !== userId) {
+    sendJSON(ws, 'error', { code: 'NOT_ADMIN', message: 'Only the room admin can delegate admin privileges.' });
+    return;
+  }
+
+  const trimmedNewAdminUserId = newAdminUserId.trim();
+
+  // Validate the new admin is a current member
+  const newAdminMember = room.members.get(trimmedNewAdminUserId);
+  if (!newAdminMember) {
+    sendJSON(ws, 'error', { code: 'BAD_REQUEST', message: 'The specified user is not a member of this room.' });
+    return;
+  }
+
+  // Update administrative flags
+  const oldAdminMember = room.members.get(userId);
+  if (oldAdminMember) {
+    oldAdminMember.isAdmin = false;
+  }
+  newAdminMember.isAdmin = true;
+  room.adminId = trimmedNewAdminUserId;
+
+  // Broadcast to all members
+  const adminChangedMsg = JSON.stringify({
+    type: 'admin_changed',
+    payload: {
+      newAdminUserId: trimmedNewAdminUserId,
+      newAdminUsername: newAdminMember.username
+    }
+  });
+
+  for (const member of room.members.values()) {
+    if (member.ws && member.ws.readyState === member.ws.OPEN) {
+      member.ws.send(adminChangedMsg);
+    }
+  }
+}

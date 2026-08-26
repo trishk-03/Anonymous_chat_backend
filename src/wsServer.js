@@ -1,6 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { generateUserId } from './utils/idGenerator.js';
-import { handleCreateRoom, handleJoinRoom, handleChatMessage } from './rooms/roomManager.js';
+import { handleCreateRoom, handleJoinRoom, handleChatMessage, handleDeleteRoom, handleDelegateAdmin } from './rooms/roomManager.js';
 
 /**
  * Sends a JSON stringified error message over the WebSocket.
@@ -64,6 +64,12 @@ export function setupWebSocketServer(httpServer) {
           break;
         case 'chat_message':
           handleChatMessage(ws, payload);
+          break;
+        case 'delete_room':
+          handleDeleteRoom(ws);
+          break;
+        case 'delegate_admin':
+          handleDelegateAdmin(ws, payload);
           break;
         default:
           console.warn(`[${msgTime}] [WS] Unknown message type "${type}" from connection ${connectionId}`);
