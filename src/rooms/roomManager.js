@@ -204,3 +204,63 @@ export function handleJoinRoom(ws, { roomId, password, username } = {}) {
     }
   }
 }
+
+/**
+ * Handles incoming chat messages from a user.
+ * Validates connection room status and message length.
+ * Relays the message to all other members in the room without persistence.
+ * 
+ * @param {import('ws').WebSocket} ws
+ * @param {Object} payload
+ * @param {string} payload.text
+ */
+export function handleChatMessage(ws, { text } = {}) {
+  const { roomId, userId } = ws;
+
+  // 1. Validate that the user is currently in a room
+  if (!roomId || !userId) {
+    sendJSON(ws, 'error', { code: 'UNAUTHORIZED', message: 'You are not currently in a room.' });
+    return;
+  }
+
+  const room = getRoomById(roomId);
+  if (!room) {
+    sendJSON(ws, 'error', { code: 'ROOM_NOT_FOUND', message: 'Your room was not found.' });
+    return;
+  }
+
+  const sender = room.members.get(userId);
+  if (!sender) {
+    sendJSON(ws, 'error', { code: 'UNAUTHORIZED', message: 'You are not a member of this room.' });
+    return;
+  }
+
+  // 2. Validate message text
+  if (typeof text !== 'string' || text.trim() === '') {
+    sendJSON(ws, 'error', { code: 'BAD_REQUEST', message: 'Message text cannot be empty.' });
+    return;
+  }
+
+  if (text.length > 2000) {
+    sendJSON(ws, 'error', { code: 'BAD_REQUEST', message: 'Message text cannot exceed 2000 characters.' });
+    return;
+  }
+
+  // 3. Broadcast to all other members in the room (not the sender)
+  const chatBroadcastMsg = JSON.stringify({
+    type: 'chat_message',
+    payload: {
+      userId,
+      username: sender.username,
+      text,
+      sentAt: Date.now()
+    }
+  });
+
+  // NOTE: messages are relayed only, never persisted, per product requirement.
+  for (const member of room.members.values()) {
+    if (member.userId !== userId && member.ws && member.ws.readyState === member.ws.OPEN) {
+      member.ws.send(chatBroadcastMsg);
+    }
+  }
+}
