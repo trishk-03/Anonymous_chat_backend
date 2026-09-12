@@ -10,13 +10,7 @@ import {
   handleLeaveRoom
 } from './rooms/roomManager.js';
 
-/**
- * Sends a JSON stringified error message over the WebSocket.
- * 
- * @param {import('ws').WebSocket} ws
- * @param {string} code
- * @param {string} message
- */
+// Sends a JSON stringified error message over the WebSocket.
 function sendError(ws, code, message) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify({
@@ -26,11 +20,7 @@ function sendError(ws, code, message) {
   }
 }
 
-/**
- * Attaches the WebSocket Server to the existing HTTP server.
- * @param {import('http').Server} httpServer
- * @returns {WebSocketServer}
- */
+// Attaches the WebSocket Server to the existing HTTP server.
 export function setupWebSocketServer(httpServer) {
   const wss = new WebSocketServer({ server: httpServer });
 

@@ -8,33 +8,22 @@ import {
   isRoomNameTaken
 } from './roomStore.js';
 
-/**
- * Sends a JSON stringified message over the given WebSocket connection.
- * 
- * @param {import('ws').WebSocket} ws
- * @param {string} type
- * @param {Object} payload
- */
+// Sends a JSON stringified message over the given WebSocket connection.
 function sendJSON(ws, type, payload) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify({ type, payload }));
   }
 }
 
-/**
+/* 
  * Orchestrates creating a room.
- * - Validates inputs (non-empty roomName, non-empty username, uniqueness of room name).
- * - Creates the room using roomStore.
- * - Configures room auto-expiry handler (broadcasts room_expired, closes sockets, deletes room).
- * - Generates admin userId and associates it with the WebSocket connection.
- * - Adds admin to the room.
- * - Responds with room_created success payload.
- * 
- * @param {import('ws').WebSocket} ws
- * @param {Object} payload
- * @param {string} payload.roomName
- * @param {string} payload.username
- */
+ * Validates inputs (non-empty roomName, non-empty username, uniqueness of room name).
+ * Creates the room using roomStore.
+ * Configures room auto-expiry handler (broadcasts room_expired, closes sockets, deletes room).
+ * Generates admin userId and associates it with the WebSocket connection.
+ * Adds admin to the room.
+ * Responds with room_created success payload
+*/
 export function handleCreateRoom(ws, { roomName, username } = {}) {
   // Validation
   if (!roomName || typeof roomName !== 'string' || roomName.trim() === '') {
@@ -113,19 +102,13 @@ export function handleCreateRoom(ws, { roomName, username } = {}) {
   });
 }
 
-/**
- * Orchestrates joining a room.
- * - Validates inputs (roomId, password, username, room existence, correct password, unique username).
- * - Generates member userId and associates it with the WebSocket connection.
- * - Adds member to room.
- * - Responds with join_success payload.
- * - Broadcasts user_joined to other members in the room.
- * 
- * @param {import('ws').WebSocket} ws
- * @param {Object} payload
- * @param {string} payload.roomId
- * @param {string} payload.password
- * @param {string} payload.username
+/*
+ *  Orchestrates joining a room.
+ *  Validates inputs (roomId, password, username, room existence, correct password, unique username).
+ *  Generates member userId and associates it with the WebSocket connection.
+ *  Adds member to room.
+ *  Responds with join_success payload.
+ *  Broadcasts user_joined to other members in the room.
  */
 export function handleJoinRoom(ws, { roomId, password, username } = {}) {
   // Validation
@@ -214,14 +197,10 @@ export function handleJoinRoom(ws, { roomId, password, username } = {}) {
   }
 }
 
-/**
+/*
  * Handles incoming chat messages from a user.
  * Validates connection room status and message length.
  * Relays the message to all other members in the room without persistence.
- * 
- * @param {import('ws').WebSocket} ws
- * @param {Object} payload
- * @param {string} payload.text
  */
 export function handleChatMessage(ws, { text } = {}) {
   const { roomId, userId } = ws;
@@ -274,14 +253,12 @@ export function handleChatMessage(ws, { text } = {}) {
   }
 }
 
-/**
+/*
  * Handles deleting a room. Admin only.
  * - Validates sender is the admin.
  * - Broadcasts room_deleted to all members (including sender).
  * - Deletes room from roomStore (clearing expiry timer).
  * - Closes all connections.
- * 
- * @param {import('ws').WebSocket} ws
  */
 export function handleDeleteRoom(ws) {
   const { roomId, userId } = ws;
